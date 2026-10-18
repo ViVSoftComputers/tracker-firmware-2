@@ -115,25 +115,27 @@ tp.timestamp = now;
 
 ---
 
-### 4.4 Sync flooding + competing with the config/node handshake
+### 4.4 Sync flooding, handshake competition, and the watchdog reboot
 
-The first sync implementation **auto-synced on BLE connect** and sent every cached point
-back-to-back with only 50 ms between them. Two problems:
+The first sync implementation **auto-synced on BLE connect** and sent every cached point in a
+tight loop. Three problems, found in sequence:
 
-1. The BLE `toPhoneQueue` is small, so sending that fast filled it up and dropped the rest — only
-   ~10–20 of 130 entries reached the app.
-2. Streaming the cache immediately on connect competed with the app's own config + node-list
-   handshake for the same BLE queue, making the app appear to hang ("reading node list" → stuck →
-   disconnect). Even a 30 s settle delay wasn't enough.
+1. **Flooding** — sending back-to-back (50 ms apart) filled the BLE `toPhoneQueue` and dropped
+   most entries (~20 of 130 reached the app).
+2. **Handshake competition** — streaming immediately on connect fought the app's own config +
+   node-list handshake for the BLE queue, making the app appear to hang.
+3. **Watchdog reboot** — pacing with a blocking `delay()` in a loop (500 ms/1 s × 130 entries)
+   blocked the module thread for the whole sync, tripping the ESP32 watchdog → the device hung
+   then **rebooted mid-sync** (and only ~20 entries landed before the reset).
 
 Final fix:
 
-- **Manual sync only** — sync is now triggered by a **"Send cache"** entry in the on-device menu,
-  not automatically on connect. The user connects, waits for the app to finish its handshake, then
-  triggers the sync when ready.
-- **Pacing** — `TRACKER_SYNC_START_DELAY_MS = 1000` (short settle) and
-  `TRACKER_SYNC_INTERVAL_MS = 500` (one entry every 0.5 s) so the queue drains and no points are
-  dropped.
+- **Manual sync only** — a **"Send cache"** menu item (no auto-sync on connect).
+- **Non-blocking sync** — send **one entry per `runOnce()` cycle** and return
+  `TRACKER_SYNC_INTERVAL_MS` as the delay to the next entry, instead of looping with `delay()`.
+  The thread never blocks long enough to trip the watchdog.
+- **Pacing** — `TRACKER_SYNC_INTERVAL_MS = 1000` (one entry every ~1 s; the app drains the BLE
+  queue slowly — even 500 ms/entry dropped points).
 
 ---
 

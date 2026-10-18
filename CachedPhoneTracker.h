@@ -22,9 +22,8 @@
 #define TRACKER_POLL_INTERVAL_MS 5000 // Idle poll interval
 
 // Phone-sync pacing: the BLE queue to the app is small, so we pace each entry
-// with a short settle delay and a per-entry delay — sending too fast drops entries.
-#define TRACKER_SYNC_START_DELAY_MS 1000 // short settle before streaming (sync is menu-triggered)
-#define TRACKER_SYNC_INTERVAL_MS 500     // delay between each synced entry
+// — sending too fast drops entries. Sync is menu-triggered (no auto-sync on connect).
+#define TRACKER_SYNC_INTERVAL_MS 1000 // delay between each synced entry (app drains slowly)
 
 #define CACHE_PATH "/tracker_points.dat"
 #define INDEX_PATH "/tracker_index.dat"
@@ -65,8 +64,8 @@ class CachedPhoneTracker : public ProtobufModule<meshtastic_Position>, private c
     bool _tracking_enabled;
     uint32_t _last_log_time;
     uint32_t _point_count;
-    bool _dump_in_progress;
     bool _sync_pending;
+    uint32_t _sync_index;
 
     // On-device sub-menu state (single-button navigation)
     bool _menu_active = false;
@@ -78,7 +77,7 @@ class CachedPhoneTracker : public ProtobufModule<meshtastic_Position>, private c
     bool _readPoint(uint32_t index, TrackPoint *tp);
     void _saveIndex();
     void _loadIndex();
-    void _pushPendingPositions();
+    int32_t _syncOneEntry();
     bool isPhoneConnected();
 
     int handleInputEvent(const InputEvent *event);

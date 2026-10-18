@@ -21,7 +21,7 @@ CachedPhoneTracker *cachedPhoneTracker;
 CachedPhoneTracker::CachedPhoneTracker()
     : ProtobufModule("cached_phone_tracker", meshtastic_PortNum_POSITION_APP, &meshtastic_Position_msg),
       concurrency::OSThread("CachedPhoneTracker"), _tracking_enabled(false), _last_log_time(0), _point_count(0),
-      _dump_in_progress(false), _sync_pending(false)
+      _sync_pending(false), _sync_index(0)
 {
     // Restore tracking state + cached point count from disk (no-op on first boot)
     _loadIndex();
@@ -36,18 +36,21 @@ int32_t CachedPhoneTracker::runOnce()
 {
     uint32_t now = millis();
 
+    // Sync is MANUAL only — triggered from the on-device menu ("Send cache").
+    // We deliberately do NOT auto-sync on connect: streaming the cache while the
+    // app is still reading config/nodes floods the BLE queue and can drop the link.
+    // The sync is NON-BLOCKING: one entry per runOnce cycle (the returned delay
+    // paces the next entry), so the thread never blocks long enough to trip the
+    // ESP32 watchdog.
+    if (_sync_pending && isPhoneConnected()) {
+        return _syncOneEntry();
+    }
+
     if (_tracking_enabled) {
         if (now - _last_log_time >= TRACKER_LOG_INTERVAL_MS) {
             _logCurrentPosition();
             _last_log_time = now;
         }
-    }
-
-    // Sync is MANUAL only — triggered from the on-device menu ("Send cache").
-    // We deliberately do NOT auto-sync on connect: streaming the cache while the
-    // app is still reading config/nodes floods the BLE queue and can drop the link.
-    if (_sync_pending && isPhoneConnected()) {
-        _pushPendingPositions();
     }
 
     return 1000; // Check every second while active
@@ -191,28 +194,28 @@ bool CachedPhoneTracker::isPhoneConnected()
     return service->api_state != MeshService::STATE_DISCONNECTED;
 }
 
-void CachedPhoneTracker::_pushPendingPositions()
+int32_t CachedPhoneTracker::_syncOneEntry()
 {
-    if (_dump_in_progress) {
-        return;
+    // Start of a new sync?
+    if (_sync_index == 0) {
+        if (_point_count == 0) {
+            _sync_pending = false;
+            return 1000;
+        }
+        LOG_INFO("CachedPhoneTracker: syncing %u cached points to phone\n", _point_count);
     }
 
-    if (_point_count == 0) {
+    // All done?
+    if (_sync_index >= _point_count) {
+        LOG_INFO("CachedPhoneTracker: sync complete\n");
         _sync_pending = false;
-        return;
+        _sync_index = 0;
+        return 1000;
     }
 
-    LOG_INFO("CachedPhoneTracker: syncing %u cached points to phone\n", _point_count);
-    _dump_in_progress = true;
-
-    // Let the BLE link settle before streaming, otherwise the first burst is lost.
-    delay(TRACKER_SYNC_START_DELAY_MS);
-
-    for (uint32_t i = 0; i < _point_count; i++) {
-        TrackPoint tp;
-        if (!_readPoint(i, &tp))
-            continue;
-
+    // Send exactly one entry, then let runOnce reschedule us for the next.
+    TrackPoint tp;
+    if (_readPoint(_sync_index, &tp)) {
         meshtastic_Position pos = meshtastic_Position_init_default;
         pos.latitude_i = tp.latitudeI;
         pos.longitude_i = tp.longitudeI;
@@ -231,15 +234,10 @@ void CachedPhoneTracker::_pushPendingPositions()
             p->priority = meshtastic_MeshPacket_Priority_BACKGROUND;
             service->sendToPhone(p);
         }
-
-        // Pace each entry so the BLE queue doesn't overflow and drop points.
-        delay(TRACKER_SYNC_INTERVAL_MS);
     }
+    _sync_index++;
 
-    _dump_in_progress = false;
-    _sync_pending = false;
-
-    LOG_INFO("CachedPhoneTracker: sync complete\n");
+    return TRACKER_SYNC_INTERVAL_MS;
 }
 
 void CachedPhoneTracker::clearCache()
@@ -249,6 +247,8 @@ void CachedPhoneTracker::clearCache()
     }
 
     _point_count = 0;
+    _sync_pending = false; // cancel any in-progress sync
+    _sync_index = 0;
     _saveIndex();
 
     LOG_INFO("CachedPhoneTracker: cache cleared\n");

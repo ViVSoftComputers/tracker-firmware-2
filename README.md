@@ -18,9 +18,9 @@ caching** and **phone sync**, plus a small on-device status card and sub-menu.
 - When you choose **"Send cache"** from the device menu, it **re-syncs every cached point** to the
   phone app — so a track recorded offline isn't lost. Sync is **manual on purpose**: auto-syncing
   on connect floods the BLE queue while the app is still reading config/nodes and can drop the link.
-- Sync is **paced** — a 1 s settle delay, then one entry every ~0.5 s
-  (`TRACKER_SYNC_START_DELAY_MS` / `TRACKER_SYNC_INTERVAL_MS`) — so the BLE queue isn't
-  flooded and points aren't dropped.
+- Sync is **non-blocking and paced** — one entry per loop cycle, ~1 s apart
+  (`TRACKER_SYNC_INTERVAL_MS`), so the BLE queue isn't flooded, points aren't dropped, and the
+  module thread never blocks long enough to trip the ESP32 watchdog.
 - Shows a **status card** on the device screen (`Tracking: ON/OFF`, `Cache: N/500`) and a
   single-button **sub-menu** to toggle tracking, send the cache to the phone, or clear the cache.
 
