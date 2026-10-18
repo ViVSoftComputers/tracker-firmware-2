@@ -171,6 +171,31 @@ Fix:
 `_rotateLog()` already removed the cache file before rewriting, so it was unaffected. The changes
 are backwards-compatible with ESP32 (both targets build clean).
 
+### 4.6 e-ink sub-menu doesn't refresh after each keypress (M1)
+
+On the Elecrow ThinkNode M1 (e-ink), navigating the sub-menu looked frozen — the screen had to be
+manually refreshed after every short-press. The module already called `screen->forceDisplay()`
+after each keypress, but on e-ink that **only marks the panel dirty; it does not re-render the UI
+frame**, which waits for the next (slow) frame tick.
+
+Fix — a `refreshTrackerDisplay()` helper, called after every menu keystroke:
+
+```cpp
+static void refreshTrackerDisplay()
+{
+#ifdef USE_EINK
+    screen->forceDisplay(true);   // drain command queue + re-render frame + refresh panel
+#else
+    screen->forceDisplay();       // TFT redraws automatically; plain forceDisplay() is a no-op
+#endif
+}
+```
+
+`screen->forceDisplay(true)` (the `forceUiUpdate` path) adds a `DEMAND_FAST` frame flag, drains the
+command queue, forces the UI frame to re-render, and then refreshes the panel. On a TFT
+`forceDisplay(true)` would leave the display stuck at a fast framerate (battery drain), so it's
+guarded to `USE_EINK`. This is entirely within the module — no Meshtastic source was changed.
+
 ---
 
 ## 5. Build environment (Windows)

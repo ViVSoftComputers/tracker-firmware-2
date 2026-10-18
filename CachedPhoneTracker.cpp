@@ -29,6 +29,21 @@
 #define CPT_FM_WRITE FILE_O_WRITE
 #endif
 
+// Force a display refresh after a menu keystroke.
+// On e-ink (USE_EINK) the default forceDisplay() only marks the panel dirty — the UI frame is not
+// re-rendered until the next slow frame tick, so the sub-menu looks frozen after each press.
+// forceDisplay(true) drains the command queue, re-renders the frame, and refreshes the panel.
+// On a TFT the menu redraws automatically at high framerate, so a plain forceDisplay() suffices
+// (and forceDisplay(true) would leave the TFT stuck at a fast framerate, wasting power).
+static void refreshTrackerDisplay()
+{
+#ifdef USE_EINK
+    screen->forceDisplay(true);
+#else
+    screen->forceDisplay();
+#endif
+}
+
 static const uint32_t min_valid_epoch = 1700000000; // Nov 2023 guard
 
 CachedPhoneTracker *cachedPhoneTracker;
@@ -336,7 +351,7 @@ int CachedPhoneTracker::handleInputEvent(const InputEvent *event)
         if (event->inputEvent == INPUT_BROKER_SELECT) {
             _menu_active = true;
             _menu_index = 0;
-            screen->forceDisplay();
+            refreshTrackerDisplay();
             return 1; // consumed
         }
         return 0;
@@ -347,7 +362,7 @@ int CachedPhoneTracker::handleInputEvent(const InputEvent *event)
     case INPUT_BROKER_USER_PRESS:
         // Short press cycles the selection.
         _menu_index = (_menu_index + 1) % 4;
-        screen->forceDisplay();
+        refreshTrackerDisplay();
         return 1;
     case INPUT_BROKER_SELECT:
         // Long press activates the highlighted item.
@@ -367,7 +382,7 @@ int CachedPhoneTracker::handleInputEvent(const InputEvent *event)
             break; // Back
         }
         _menu_active = false;
-        screen->forceDisplay();
+        refreshTrackerDisplay();
         return 1;
     default:
         return 0;
