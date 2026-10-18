@@ -10,8 +10,9 @@
 // CachedPhoneTracker - Standalone GPS tracking with Meshtastic position sync
 // -----------------------------------------------------------------------------
 // Logs GPS positions locally (LittleFS) and syncs them to the Meshtastic phone
-// app when it reconnects. Has an on-device status card + sub-menu (start/stop,
-// clear cache) driven by the single user button. NO multi-click button gestures.
+// app ON DEMAND via the on-device menu. Has a status card + sub-menu
+// (toggle tracking, send cache, clear cache) driven by the single user button.
+// NO multi-click button gestures. NO automatic sync on connect.
 //
 // Ported to current Meshtastic for the Heltec Wireless Tracker V2 (ESP32-S3).
 // -----------------------------------------------------------------------------
@@ -20,10 +21,10 @@
 #define TRACKER_LOG_INTERVAL_MS 60000 // Log once every 60 seconds
 #define TRACKER_POLL_INTERVAL_MS 5000 // Idle poll interval
 
-// Phone-sync pacing: the BLE queue to the app is small, so we must let the link
-// settle after connect and then pace each entry — sending too fast drops entries.
-#define TRACKER_SYNC_START_DELAY_MS 30000 // wait for the app to finish config + node sync before streaming
-#define TRACKER_SYNC_INTERVAL_MS 500      // delay between each synced entry
+// Phone-sync pacing: the BLE queue to the app is small, so we pace each entry
+// with a short settle delay and a per-entry delay — sending too fast drops entries.
+#define TRACKER_SYNC_START_DELAY_MS 1000 // short settle before streaming (sync is menu-triggered)
+#define TRACKER_SYNC_INTERVAL_MS 500     // delay between each synced entry
 
 #define CACHE_PATH "/tracker_points.dat"
 #define INDEX_PATH "/tracker_index.dat"
@@ -66,7 +67,6 @@ class CachedPhoneTracker : public ProtobufModule<meshtastic_Position>, private c
     uint32_t _point_count;
     bool _dump_in_progress;
     bool _sync_pending;
-    bool _was_phone_connected;
 
     // On-device sub-menu state (single-button navigation)
     bool _menu_active = false;

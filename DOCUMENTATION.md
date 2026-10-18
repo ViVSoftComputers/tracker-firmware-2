@@ -115,17 +115,25 @@ tp.timestamp = now;
 
 ---
 
-### 4.4 Sync floods the BLE queue (only some entries reached the app)
+### 4.4 Sync flooding + competing with the config/node handshake
 
-The initial sync sent every cached point back-to-back with only 50 ms between them. The BLE
-`toPhoneQueue` is small, so it filled up and the remainder were dropped — only ~10–20 of 130
-entries reached the app. Fixed by pacing the sync:
+The first sync implementation **auto-synced on BLE connect** and sent every cached point
+back-to-back with only 50 ms between them. Two problems:
 
-- **Startup delay** (`TRACKER_SYNC_START_DELAY_MS = 30000`) — wait 30 s for the app to finish its
-  config + node handshake before streaming (starting too early competed with that handshake for
-  the BLE queue and made the app appear to hang).
-- **Per-entry delay** (`TRACKER_SYNC_INTERVAL_MS = 500`) — send one entry every 0.5 s so the
-  queue drains and no points are dropped.
+1. The BLE `toPhoneQueue` is small, so sending that fast filled it up and dropped the rest — only
+   ~10–20 of 130 entries reached the app.
+2. Streaming the cache immediately on connect competed with the app's own config + node-list
+   handshake for the same BLE queue, making the app appear to hang ("reading node list" → stuck →
+   disconnect). Even a 30 s settle delay wasn't enough.
+
+Final fix:
+
+- **Manual sync only** — sync is now triggered by a **"Send cache"** entry in the on-device menu,
+  not automatically on connect. The user connects, waits for the app to finish its handshake, then
+  triggers the sync when ready.
+- **Pacing** — `TRACKER_SYNC_START_DELAY_MS = 1000` (short settle) and
+  `TRACKER_SYNC_INTERVAL_MS = 500` (one entry every 0.5 s) so the queue drains and no points are
+  dropped.
 
 ---
 

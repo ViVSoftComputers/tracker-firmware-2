@@ -15,20 +15,21 @@ caching** and **phone sync**, plus a small on-device status card and sub-menu.
 - Logs the current GPS position to a local **LittleFS** file every **60 seconds** while tracking
   is enabled.
 - Caches up to **500** points (`MAX_CACHED_POSITIONS`), rotating out the oldest half when full.
-- When the phone app **reconnects** (BLE), it **re-syncs every cached point** to the app so a
-  track recorded offline is not lost.
-- Sync is **paced** — a 30 s settle delay after connect (lets the app finish its config + node
-  handshake), then one entry every ~0.5 s (`TRACKER_SYNC_START_DELAY_MS` /
-  `TRACKER_SYNC_INTERVAL_MS`) — so the BLE queue isn't flooded and points aren't dropped.
+- When you choose **"Send cache"** from the device menu, it **re-syncs every cached point** to the
+  phone app — so a track recorded offline isn't lost. Sync is **manual on purpose**: auto-syncing
+  on connect floods the BLE queue while the app is still reading config/nodes and can drop the link.
+- Sync is **paced** — a 1 s settle delay, then one entry every ~0.5 s
+  (`TRACKER_SYNC_START_DELAY_MS` / `TRACKER_SYNC_INTERVAL_MS`) — so the BLE queue isn't
+  flooded and points aren't dropped.
 - Shows a **status card** on the device screen (`Tracking: ON/OFF`, `Cache: N/500`) and a
-  single-button **sub-menu** to toggle tracking or clear the cache.
+  single-button **sub-menu** to toggle tracking, send the cache to the phone, or clear the cache.
 
 ## On-device UI (single button)
 
 | Action | Behaviour |
 |---|---|
 | **Long-press** on the card | Opens the sub-menu |
-| **Short-press** | Cycles `Toggle tracking` → `Clear cache` → `Back` |
+| **Short-press** | Cycles `Toggle tracking` → `Send cache` → `Clear cache` → `Back` |
 | **Long-press** | Activates the highlighted item |
 
 > Single-button boards map **short-press → `INPUT_BROKER_USER_PRESS`** and

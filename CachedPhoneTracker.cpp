@@ -21,7 +21,7 @@ CachedPhoneTracker *cachedPhoneTracker;
 CachedPhoneTracker::CachedPhoneTracker()
     : ProtobufModule("cached_phone_tracker", meshtastic_PortNum_POSITION_APP, &meshtastic_Position_msg),
       concurrency::OSThread("CachedPhoneTracker"), _tracking_enabled(false), _last_log_time(0), _point_count(0),
-      _dump_in_progress(false), _sync_pending(false), _was_phone_connected(false)
+      _dump_in_progress(false), _sync_pending(false)
 {
     // Restore tracking state + cached point count from disk (no-op on first boot)
     _loadIndex();
@@ -36,13 +36,6 @@ int32_t CachedPhoneTracker::runOnce()
 {
     uint32_t now = millis();
 
-    // Detect a phone reconnect so we re-sync cached points exactly once
-    bool connected = isPhoneConnected();
-    if (connected && !_was_phone_connected) {
-        _sync_pending = true;
-    }
-    _was_phone_connected = connected;
-
     if (_tracking_enabled) {
         if (now - _last_log_time >= TRACKER_LOG_INTERVAL_MS) {
             _logCurrentPosition();
@@ -50,7 +43,10 @@ int32_t CachedPhoneTracker::runOnce()
         }
     }
 
-    if (_sync_pending && connected) {
+    // Sync is MANUAL only — triggered from the on-device menu ("Send cache").
+    // We deliberately do NOT auto-sync on connect: streaming the cache while the
+    // app is still reading config/nodes floods the BLE queue and can drop the link.
+    if (_sync_pending && isPhoneConnected()) {
         _pushPendingPositions();
     }
 
@@ -288,8 +284,8 @@ void CachedPhoneTracker::drawFrame(OLEDDisplay *display, OLEDDisplayUiState *sta
 
     if (_menu_active) {
         // Sub-menu: short press cycles the selection, long press activates it.
-        static const char *items[] = {"Toggle tracking", "Clear cache", "Back"};
-        for (uint8_t i = 0; i < 3; i++) {
+        static const char *items[] = {"Toggle tracking", "Send cache", "Clear cache", "Back"};
+        for (uint8_t i = 0; i < 4; i++) {
             char buf[32];
             snprintf(buf, sizeof(buf), "%s %s", (i == _menu_index) ? ">" : " ", items[i]);
             display->drawString(x, graphics::getTextPositions(display)[1 + i], buf);
@@ -326,7 +322,7 @@ int CachedPhoneTracker::handleInputEvent(const InputEvent *event)
     switch (event->inputEvent) {
     case INPUT_BROKER_USER_PRESS:
         // Short press cycles the selection.
-        _menu_index = (_menu_index + 1) % 3;
+        _menu_index = (_menu_index + 1) % 4;
         screen->forceDisplay();
         return 1;
     case INPUT_BROKER_SELECT:
@@ -336,9 +332,13 @@ int CachedPhoneTracker::handleInputEvent(const InputEvent *event)
             toggleTracking();
             break;
         case 1:
-            clearCache();
+            // Send cache: request a manual sync (runs in runOnce when the phone is connected).
+            _sync_pending = true;
             break;
         case 2:
+            clearCache();
+            break;
+        case 3:
         default:
             break; // Back
         }
