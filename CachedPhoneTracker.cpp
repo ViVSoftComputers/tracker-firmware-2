@@ -14,6 +14,21 @@
 // Ported for Heltec Wireless Tracker V2 (ESP32-S3). No button gestures.
 // -----------------------------------------------------------------------------
 
+// Cross-platform file open modes.
+//   ESP32 / RP2040 / Portduino: FILE_O_READ="r", FILE_O_WRITE="w" (truncates), FILE_APPEND="a".
+//   nRF52 / STM32 (Adafruit LittleFS): only FILE_O_READ(=0) / FILE_O_WRITE(=1) exist, and
+//   FILE_O_WRITE opens read-write + create + seeks to END (i.e. it appends — it does NOT truncate).
+//   So "append" == FILE_O_WRITE on nRF52, and "overwrite" must be done by removing the file first.
+#if defined(ARCH_NRF52) || defined(ARCH_STM32)
+#define CPT_FM_READ FILE_O_READ
+#define CPT_FM_APPEND FILE_O_WRITE
+#define CPT_FM_WRITE FILE_O_WRITE
+#else
+#define CPT_FM_READ FILE_O_READ
+#define CPT_FM_APPEND FILE_APPEND
+#define CPT_FM_WRITE FILE_O_WRITE
+#endif
+
 static const uint32_t min_valid_epoch = 1700000000; // Nov 2023 guard
 
 CachedPhoneTracker *cachedPhoneTracker;
@@ -94,7 +109,7 @@ void CachedPhoneTracker::_logCurrentPosition()
 
 void CachedPhoneTracker::_writePoint(TrackPoint *tp)
 {
-    File f = FSCom.open(CACHE_PATH, FILE_APPEND);
+    File f = FSCom.open(CACHE_PATH, CPT_FM_APPEND);
     if (!f) {
         LOG_ERROR("CachedPhoneTracker: failed to open points file\n");
         return;
@@ -120,7 +135,7 @@ void CachedPhoneTracker::_rotateLog()
     uint32_t half = _point_count / 2;
     uint32_t keep = _point_count - half;
 
-    File rf = FSCom.open(CACHE_PATH, FILE_READ);
+    File rf = FSCom.open(CACHE_PATH, CPT_FM_READ);
     if (!rf)
         return;
 
@@ -136,7 +151,7 @@ void CachedPhoneTracker::_rotateLog()
     rf.close();
 
     FSCom.remove(CACHE_PATH);
-    File wf = FSCom.open(CACHE_PATH, FILE_WRITE);
+    File wf = FSCom.open(CACHE_PATH, CPT_FM_WRITE);
     if (wf) {
         wf.write(buf, keep * sizeof(TrackPoint));
         wf.close();
@@ -152,7 +167,7 @@ bool CachedPhoneTracker::_readPoint(uint32_t index, TrackPoint *tp)
     if (index >= _point_count)
         return false;
 
-    File f = FSCom.open(CACHE_PATH, FILE_READ);
+    File f = FSCom.open(CACHE_PATH, CPT_FM_READ);
     if (!f)
         return false;
 
@@ -165,7 +180,12 @@ bool CachedPhoneTracker::_readPoint(uint32_t index, TrackPoint *tp)
 
 void CachedPhoneTracker::_saveIndex()
 {
-    File f = FSCom.open(INDEX_PATH, FILE_WRITE);
+    // nRF52's FILE_O_WRITE appends rather than truncates, so remove first to
+    // guarantee a fresh, correctly-sized index file on every platform.
+    if (FSCom.exists(INDEX_PATH))
+        FSCom.remove(INDEX_PATH);
+
+    File f = FSCom.open(INDEX_PATH, CPT_FM_WRITE);
     if (!f)
         return;
 
@@ -179,7 +199,7 @@ void CachedPhoneTracker::_loadIndex()
     if (!FSCom.exists(INDEX_PATH))
         return;
 
-    File f = FSCom.open(INDEX_PATH, FILE_READ);
+    File f = FSCom.open(INDEX_PATH, CPT_FM_READ);
     if (!f)
         return;
 

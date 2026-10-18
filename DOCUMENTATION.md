@@ -28,6 +28,11 @@ Turn the Heltec Wireless Tracker V2 (ESP32-S3) into a standalone GPS tracker tha
 | Filesystem | LittleFS |
 | Meshtastic base commit | `200aa42` |
 
+The module is **cross-platform** and also builds for **nRF52840** boards — verified against the
+**Elecrow ThinkNode M1** (`pio run -e thinknode_m1`, e-ink 200×200 + GxEPD2). The only port change
+was the filesystem open modes (see §4.5); the cache, sync, and UI code use standard Arduino FS +
+`Screen`/`OLEDDisplay` abstractions that are shared across architectures.
+
 ## 3. What changed (two files)
 
 Both files live under `src/modules/optional/CachedPhoneTracker/`:
@@ -140,6 +145,31 @@ Final fix:
   The thread never blocks long enough to trip the watchdog.
 - **Pacing** — `TRACKER_SYNC_INTERVAL_MS = 1000` (one entry every ~1 s; the app drains the BLE
   queue slowly — even 500 ms/entry dropped points).
+
+### 4.5 nRF52 port — `FILE_READ`/`FILE_WRITE`/`FILE_APPEND` don't exist
+
+Compiling for the Elecrow ThinkNode M1 (nRF52840) failed on the Arduino file-mode constants:
+
+```
+error: 'FILE_APPEND' was not declared in this scope; did you mean 'LFS_O_APPEND'?
+error: 'FILE_READ' was not declared in this scope
+error: 'FILE_WRITE' was not declared in this scope
+```
+
+The nRF52 filesystem backend is Adafruit LittleFS (`InternalFS`), which only defines
+`FILE_O_READ` (=0) and `FILE_O_WRITE` (=1). Crucially, **`FILE_O_WRITE` opens read-write + create +
+seeks to the END (it appends — it does *not* truncate** like ESP32's `"w"`).
+
+Fix:
+
+- Added `CPT_FM_READ` / `CPT_FM_WRITE` / `CPT_FM_APPEND` macros (per `ARCH_*`): on nRF52/STM32
+  they map to `FILE_O_READ`/`FILE_O_WRITE` (append == `FILE_O_WRITE`); on ESP32/RP2040/Portduino
+  they map to `FILE_O_READ`/`FILE_O_WRITE`/`FILE_APPEND`.
+- `_saveIndex()` now **removes the index file before writing**, because on nRF52 `FILE_O_WRITE`
+  appends and would otherwise grow the index file every call (instead of overwriting it).
+
+`_rotateLog()` already removed the cache file before rewriting, so it was unaffected. The changes
+are backwards-compatible with ESP32 (both targets build clean).
 
 ---
 

@@ -1,7 +1,8 @@
 # CachedPhoneTracker — Meshtastic GPS Tracker Module
 
 A Meshtastic **optional module** that turns a compatible GPS-equipped board (developed on the
-**Heltec Wireless Tracker V2**, ESP32-S3) into a standalone GPS tracker with **offline point
+**Heltec Wireless Tracker V2**, ESP32-S3; also builds for **nRF52840** boards such as the
+**Elecrow ThinkNode M1**) into a standalone GPS tracker with **offline point
 caching** and **phone sync**, plus a small on-device status card and sub-menu.
 
 > ⚠️ This is **not** a complete firmware. It is a drop-in Meshtastic module — two source files
