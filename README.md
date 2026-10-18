@@ -17,9 +17,9 @@ caching** and **phone sync**, plus a small on-device status card and sub-menu.
 - Caches up to **500** points (`MAX_CACHED_POSITIONS`), rotating out the oldest half when full.
 - When the phone app **reconnects** (BLE), it **re-syncs every cached point** to the app so a
   track recorded offline is not lost.
-- Sync is **paced** — a short settle delay after connect, then one entry every ~0.5 s
-  (`TRACKER_SYNC_START_DELAY_MS` / `TRACKER_SYNC_INTERVAL_MS`) — so the BLE queue isn't
-  flooded and points aren't dropped.
+- Sync is **paced** — a 30 s settle delay after connect (lets the app finish its config + node
+  handshake), then one entry every ~0.5 s (`TRACKER_SYNC_START_DELAY_MS` /
+  `TRACKER_SYNC_INTERVAL_MS`) — so the BLE queue isn't flooded and points aren't dropped.
 - Shows a **status card** on the device screen (`Tracking: ON/OFF`, `Cache: N/500`) and a
   single-button **sub-menu** to toggle tracking or clear the cache.
 

@@ -22,8 +22,8 @@
 
 // Phone-sync pacing: the BLE queue to the app is small, so we must let the link
 // settle after connect and then pace each entry — sending too fast drops entries.
-#define TRACKER_SYNC_START_DELAY_MS 3000 // wait for the BLE link to settle before streaming
-#define TRACKER_SYNC_INTERVAL_MS 500     // delay between each synced entry
+#define TRACKER_SYNC_START_DELAY_MS 30000 // wait for the app to finish config + node sync before streaming
+#define TRACKER_SYNC_INTERVAL_MS 500      // delay between each synced entry
 
 #define CACHE_PATH "/tracker_points.dat"
 #define INDEX_PATH "/tracker_index.dat"
