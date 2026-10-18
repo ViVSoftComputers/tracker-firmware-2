@@ -47,7 +47,11 @@ int32_t CachedPhoneTracker::runOnce()
     }
 
     if (_tracking_enabled) {
-        if (now - _last_log_time >= TRACKER_LOG_INTERVAL_MS) {
+        // Log at the same rate Meshtastic refreshes the GPS — configurable via the
+        // app's "Position update interval" (position.gps_update_interval, seconds).
+        uint32_t logIntervalMs =
+            Default::getConfiguredOrDefaultMs(config.position.gps_update_interval, default_gps_update_interval);
+        if (now - _last_log_time >= logIntervalMs) {
             _logCurrentPosition();
             _last_log_time = now;
         }

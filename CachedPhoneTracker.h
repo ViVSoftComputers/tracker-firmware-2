@@ -18,8 +18,9 @@
 // -----------------------------------------------------------------------------
 
 #define MAX_CACHED_POSITIONS 500
-#define TRACKER_LOG_INTERVAL_MS 60000 // Log once every 60 seconds
-#define TRACKER_POLL_INTERVAL_MS 5000 // Idle poll interval
+// The GPS log interval follows the Meshtastic "position.gps_update_interval"
+// setting (configurable in the app: 8 / 20 / 40 / 60 / 80 / 120 s) — see runOnce().
+// There is no fixed log timer; the cache logs at the same rate Meshtastic refreshes the GPS.
 
 // Phone-sync pacing: the BLE queue to the app is small, so we pace each entry
 // — sending too fast drops entries. Sync is menu-triggered (no auto-sync on connect).

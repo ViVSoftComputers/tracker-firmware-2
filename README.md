@@ -12,8 +12,9 @@ caching** and **phone sync**, plus a small on-device status card and sub-menu.
 
 ## What it does
 
-- Logs the current GPS position to a local **LittleFS** file every **60 seconds** while tracking
-  is enabled.
+- Logs the current GPS position to a local **LittleFS** file at the same rate Meshtastic refreshes
+  the GPS (the app's **"Position update interval"** = `position.gps_update_interval`: 8/20/40/60/80/120 s)
+  while tracking is enabled.
 - Caches up to **500** points (`MAX_CACHED_POSITIONS`), rotating out the oldest half when full.
 - When you choose **"Send cache"** from the device menu, it **re-syncs every cached point** to the
   phone app — so a track recorded offline isn't lost. Sync is **manual on purpose**: auto-syncing
@@ -40,7 +41,8 @@ caching** and **phone sync**, plus a small on-device status card and sub-menu.
 
 - Tracking starts **OFF** on first boot / after a filesystem reset.
 - Cache cap is **500** points (`MAX_CACHED_POSITIONS` in `CachedPhoneTracker.h`).
-- Log interval is **60 s** (`TRACKER_LOG_INTERVAL_MS`).
+- Log interval = the app's **"Position update interval"** (`position.gps_update_interval`,
+  8/20/40/60/80/120 s; default 120 s). No fixed timer.
 
 ## Files
 

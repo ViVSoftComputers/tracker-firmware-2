@@ -9,7 +9,8 @@ module for the **Heltec Wireless Tracker V2**, including the bugs found and the 
 
 Turn the Heltec Wireless Tracker V2 (ESP32-S3) into a standalone GPS tracker that:
 
-1. Logs GPS positions **offline** to LittleFS every 60 s.
+1. Logs GPS positions **offline** to LittleFS at the Meshtastic **"Position update interval"**
+   (`position.gps_update_interval` — 8/20/40/60/80/120 s, configurable in the app).
 2. Caches up to **500** points (rolling).
 3. **Re-syncs** all cached points to the Meshtastic phone app when it reconnects.
 4. Shows an on-device **status card** and a single-button **sub-menu** (start/stop, clear cache).
@@ -59,6 +60,9 @@ The original `CachedPhoneTracker` used older Meshtastic APIs. The port updated:
 - **Sub-menu** — `inputObserver` + `handleInputEvent()` (single-button start/stop/clear).
 - **`setTrackingEnabled()` / `toggleTracking()`** — runtime toggle (previously missing).
 - **Default tracking OFF**, cache cap **500**.
+- **Configurable log interval (v2)** — the log timer was a fixed 60 s; it now follows the
+  Meshtastic app's **"Position update interval"** (`position.gps_update_interval`, 8/20/40/60/80/120 s)
+  via `Default::getConfiguredOrDefaultMs(...)`, so the cache logs at the same rate the GPS refreshes.
 
 ---
 
