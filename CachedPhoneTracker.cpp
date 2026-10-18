@@ -209,6 +209,9 @@ void CachedPhoneTracker::_pushPendingPositions()
     LOG_INFO("CachedPhoneTracker: syncing %u cached points to phone\n", _point_count);
     _dump_in_progress = true;
 
+    // Let the BLE link settle before streaming, otherwise the first burst is lost.
+    delay(TRACKER_SYNC_START_DELAY_MS);
+
     for (uint32_t i = 0; i < _point_count; i++) {
         TrackPoint tp;
         if (!_readPoint(i, &tp))
@@ -233,8 +236,8 @@ void CachedPhoneTracker::_pushPendingPositions()
             service->sendToPhone(p);
         }
 
-        // Throttle to avoid flooding the phone queue
-        delay(50);
+        // Pace each entry so the BLE queue doesn't overflow and drop points.
+        delay(TRACKER_SYNC_INTERVAL_MS);
     }
 
     _dump_in_progress = false;

@@ -115,6 +115,19 @@ tp.timestamp = now;
 
 ---
 
+### 4.4 Sync floods the BLE queue (only some entries reached the app)
+
+The initial sync sent every cached point back-to-back with only 50 ms between them. The BLE
+`toPhoneQueue` is small, so it filled up and the remainder were dropped — only ~10–20 of 130
+entries reached the app. Fixed by pacing the sync:
+
+- **Startup delay** (`TRACKER_SYNC_START_DELAY_MS = 3000`) — wait for the BLE link to settle
+  after connect before streaming.
+- **Per-entry delay** (`TRACKER_SYNC_INTERVAL_MS = 500`) — send one entry every 0.5 s so the
+  queue drains and no points are dropped.
+
+---
+
 ## 5. Build environment (Windows)
 
 All of the following were required to get an ESP32-S3 Meshtastic build working under the
