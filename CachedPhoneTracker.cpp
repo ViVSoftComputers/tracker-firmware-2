@@ -3,7 +3,9 @@
 #include "FSCommon.h"
 #include "MeshService.h"
 #include "NodeDB.h"
+#include "buzz/buzz.h"
 #include "configuration.h"
+#include "gps/GPS.h"
 #include "gps/RTC.h"
 #include "main.h"
 #include "graphics/Screen.h"
@@ -11,7 +13,8 @@
 
 // -----------------------------------------------------------------------------
 // CachedPhoneTracker - Standalone GPS tracking with Meshtastic position sync
-// Ported for Heltec Wireless Tracker V2 (ESP32-S3). No button gestures.
+// Supports Heltec Tracker V2 (ESP32-S3 TFT), ThinkNode M1 (nRF52840 e-ink) and
+// Seeed T1000-E (nRF52840 screenless). See CachedPhoneTracker.h for the overview.
 // -----------------------------------------------------------------------------
 
 // Cross-platform file open modes.
@@ -44,6 +47,54 @@ static void refreshTrackerDisplay()
 #endif
 }
 
+// -----------------------------------------------------------------------------
+// Buzzer feedback (screenless T1000-E) — the buzzer is the only UI on a screenless
+// device, so tracking on/off and clear-cache get distinct audio feedback.
+// playTones() lives in buzz.cpp but isn't declared in buzz.h, so we forward-declare
+// it and mirror its ToneDuration struct exactly (must match buzz.cpp's layout).
+// -----------------------------------------------------------------------------
+struct ToneDuration {
+    int frequency_khz; // NOTE: named khz but actually holds Hz (see buzz.cpp)
+    int duration_ms;
+};
+void playTones(const ToneDuration *tone_durations, int size);
+
+// Note frequencies (Hz).
+#define CPT_NOTE_C3 131
+#define CPT_NOTE_E3 165
+#define CPT_NOTE_G3 196
+#define CPT_NOTE_C4 262
+#define CPT_NOTE_E4 330
+#define CPT_NOTE_G4 392
+#define CPT_NOTE_C5 523
+
+static void playTrackingOnTune()
+{
+    // Ascending arpeggio (C4 -> E4 -> G4 -> C5).
+    static const ToneDuration tones[] = {
+        {CPT_NOTE_C4, 100}, {CPT_NOTE_E4, 100}, {CPT_NOTE_G4, 100}, {CPT_NOTE_C5, 160},
+    };
+    playTones(tones, 4);
+}
+
+static void playTrackingOffTune()
+{
+    // Descending arpeggio (C5 -> G4 -> E4 -> C4).
+    static const ToneDuration tones[] = {
+        {CPT_NOTE_C5, 100}, {CPT_NOTE_G4, 100}, {CPT_NOTE_E4, 100}, {CPT_NOTE_C4, 160},
+    };
+    playTones(tones, 4);
+}
+
+static void playClearCacheTune()
+{
+    // Low descending "dump" (G3 -> E3 -> C3) — clearly lower than the tracking arpeggios.
+    static const ToneDuration tones[] = {
+        {CPT_NOTE_G3, 90}, {CPT_NOTE_E3, 90}, {CPT_NOTE_C3, 200},
+    };
+    playTones(tones, 3);
+}
+
 static const uint32_t min_valid_epoch = 1700000000; // Nov 2023 guard
 
 CachedPhoneTracker *cachedPhoneTracker;
@@ -66,15 +117,36 @@ int32_t CachedPhoneTracker::runOnce()
 {
     uint32_t now = millis();
 
-    // Sync is MANUAL only — triggered from the on-device menu ("Send cache").
-    // We deliberately do NOT auto-sync on connect: streaming the cache while the
-    // app is still reading config/nodes floods the BLE queue and can drop the link.
-    // The sync is NON-BLOCKING: one entry per runOnce cycle (the returned delay
-    // paces the next entry), so the thread never blocks long enough to trip the
-    // ESP32 watchdog.
+#if !HAS_SCREEN
+    // --- Auto-sync on phone connect (screenless T1000-E) ---
+    // The screenless tracker has no "Send cache" menu, so it syncs automatically
+    // when the phone connects — after a short settle delay so the app can finish
+    // reading config/nodes before the cache starts streaming (avoids BLE flooding).
+    bool phoneConnected = isPhoneConnected();
+    if (phoneConnected && !_was_phone_connected) {
+        _was_phone_connected = true;
+        _sync_settle_start = now;
+    } else if (!phoneConnected) {
+        _was_phone_connected = false;
+        _sync_settle_start = 0; // disarm on disconnect
+    }
+#endif
+
+    // Sync is NON-BLOCKING: one entry per runOnce cycle (the returned delay paces
+    // the next entry), so the thread never blocks long enough to trip the watchdog.
     if (_sync_pending && isPhoneConnected()) {
         return _syncOneEntry();
     }
+
+#if !HAS_SCREEN
+    // After the settle delay, start streaming the cache (one-shot per connect).
+    if (_sync_settle_start != 0 && _point_count > 0 && (now - _sync_settle_start) >= TRACKER_SYNC_SETTLE_MS) {
+        _sync_settle_start = 0; // disarm
+        _sync_pending = true;
+        _sync_index = 0;
+        return _syncOneEntry();
+    }
+#endif
 
     if (_tracking_enabled) {
         // Log at the same rate Meshtastic refreshes the GPS — configurable via the
@@ -117,6 +189,11 @@ void CachedPhoneTracker::_logCurrentPosition()
     tp.sats = (uint8_t)localPosition.sats_in_view;
 
     _writePoint(&tp);
+
+#if !HAS_SCREEN
+    // Confirmation beep: a point was just saved, and we're still in tracking mode.
+    playBeep();
+#endif
 
     LOG_INFO("CachedPhoneTracker: logged point %u, lat=%.6f lon=%.6f\n", _point_count, localPosition.latitude_i * 1e-7,
              localPosition.longitude_i * 1e-7);
@@ -205,7 +282,6 @@ void CachedPhoneTracker::_saveIndex()
         return;
 
     f.write((uint8_t *)&_point_count, sizeof(_point_count));
-    f.write((uint8_t *)&_tracking_enabled, sizeof(_tracking_enabled));
     f.close();
 }
 
@@ -219,7 +295,6 @@ void CachedPhoneTracker::_loadIndex()
         return;
 
     f.read((uint8_t *)&_point_count, sizeof(_point_count));
-    f.read((uint8_t *)&_tracking_enabled, sizeof(_tracking_enabled));
     f.close();
 
     // Sanity check
@@ -299,7 +374,6 @@ void CachedPhoneTracker::setTrackingEnabled(bool on)
         return;
     _tracking_enabled = on;
     _last_log_time = millis(); // reset the log timer so a fresh enable logs promptly
-    _saveIndex();
     LOG_INFO("CachedPhoneTracker: tracking %s\n", on ? "ON" : "OFF");
 }
 
@@ -308,6 +382,7 @@ void CachedPhoneTracker::toggleTracking()
     setTrackingEnabled(!_tracking_enabled);
 }
 
+#if HAS_SCREEN
 bool CachedPhoneTracker::wantUIFrame()
 {
     return true;
@@ -340,7 +415,53 @@ void CachedPhoneTracker::drawFrame(OLEDDisplay *display, OLEDDisplayUiState *sta
     snprintf(buf, sizeof(buf), "Cache: %u/%d", _point_count, MAX_CACHED_POSITIONS);
     display->drawString(x, graphics::getTextPositions(display)[2], buf);
 }
+#endif // HAS_SCREEN
 
+// -----------------------------------------------------------------------------
+// Button gesture handler (1-5 clicks) — used on screenless boards (T1000-E).
+// Wired up by ButtonThread for TRACKER_T1000_E.
+// -----------------------------------------------------------------------------
+void CachedPhoneTracker::handleMultipress(int clicks)
+{
+    LOG_INFO("CachedPhoneTracker: %d-click gesture\n", clicks);
+
+    switch (clicks) {
+    case 1:
+        // 1 click: log a waypoint now (GPS may be powered if needed).
+        _logCurrentPosition(); // beeps on successful save (see _logCurrentPosition)
+        break;
+    case 2:
+        // 2 clicks: toggle continuous tracker mode on/off.
+        toggleTracking();
+        if (_tracking_enabled)
+            playTrackingOnTune();  // ascending = tracking turned ON
+        else
+            playTrackingOffTune(); // descending = tracking turned OFF
+        break;
+    case 3:
+        // 3 clicks: clear the cached point data.
+        clearCache();
+        playClearCacheTune();
+        break;
+    case 4:
+        // 4 clicks: GPS toggle / force a position action.
+        if (gps)
+            gps->toggleGpsMode();
+        playBeep();
+        break;
+    case 5:
+        // 5 clicks: local node status.
+        LOG_INFO("CachedPhoneTracker: status - tracking=%s, points=%u\n", _tracking_enabled ? "ON" : "OFF",
+                 _point_count);
+        playBeep();
+        break;
+    default:
+        LOG_WARN("CachedPhoneTracker: unhandled click count %d\n", clicks);
+        break;
+    }
+}
+
+#if HAS_SCREEN
 int CachedPhoneTracker::handleInputEvent(const InputEvent *event)
 {
     if (!screen || !screen->isShowingModuleFrame(this))
@@ -388,6 +509,13 @@ int CachedPhoneTracker::handleInputEvent(const InputEvent *event)
         return 0;
     }
 }
+#else
+int CachedPhoneTracker::handleInputEvent(const InputEvent *event)
+{
+    (void)event;
+    return 0; // screenless: gestures are handled via handleMultipress()
+}
+#endif // HAS_SCREEN
 
 void setupCachedPhoneTracker()
 {

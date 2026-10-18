@@ -28,10 +28,12 @@ Turn the Heltec Wireless Tracker V2 (ESP32-S3) into a standalone GPS tracker tha
 | Filesystem | LittleFS |
 | Meshtastic base commit | `200aa42` |
 
-The module is **cross-platform** and also builds for **nRF52840** boards — verified against the
-**Elecrow ThinkNode M1** (`pio run -e thinknode_m1`, e-ink 200×200 + GxEPD2). The only port change
-was the filesystem open modes (see §4.5); the cache, sync, and UI code use standard Arduino FS +
-`Screen`/`OLEDDisplay` abstractions that are shared across architectures.
+The module is **cross-platform** and also builds for two **nRF52840** boards:
+
+| Target | Env | Notes |
+|---|---|---|
+| Elecrow ThinkNode M1 | `thinknode_m1` | e-ink 200×200 (GxEPD2); filesystem open modes (§4.5), e-ink refresh (§4.6) |
+| Seeed T1000-E | `tracker-t1000-e` | **screenless** — button gestures, auto-sync, buzzer feedback (§4.7) |
 
 ## 3. What changed (two files)
 
@@ -57,7 +59,8 @@ The original `CachedPhoneTracker` used older Meshtastic APIs. The port updated:
 | `service.sendPositionToPhone(pos)` | `service->sendToPhone(packet)` |
 | `service.isPhoneConnected` | `service->api_state != STATE_DISCONNECTED` |
 | `spiLock` | removed (not needed) |
-| buzzer pins 25/37, `handleMultipress` | removed |
+| buzzer pins 25/37 | removed (re-added as `playTones()` melodies for the T1000-E, §4.7) |
+| `handleMultipress` | re-added for the T1000-E button gestures (§4.7) |
 
 ### Added (new work)
 
@@ -68,6 +71,11 @@ The original `CachedPhoneTracker` used older Meshtastic APIs. The port updated:
 - **Configurable log interval (v2)** — the log timer was a fixed 60 s; it now follows the
   Meshtastic app's **"Position update interval"** (`position.gps_update_interval`, 8/20/40/60/80/120 s)
   via `Default::getConfiguredOrDefaultMs(...)`, so the cache logs at the same rate the GPS refreshes.
+- **nRF52840 support (v3)** — cross-platform file open modes (`CPT_FM_*`) + e-ink menu refresh
+  for the ThinkNode M1.
+- **T1000-E support (v4)** — screenless compilation (`#if HAS_SCREEN`), 1–5 click button gestures
+  via `handleMultipress()`, auto-sync on phone connect, buzzer feedback tunes, and default-OFF
+  tracking (see §4.7).
 
 ---
 
@@ -195,6 +203,53 @@ static void refreshTrackerDisplay()
 command queue, forces the UI frame to re-render, and then refreshes the panel. On a TFT
 `forceDisplay(true)` would leave the display stuck at a fast framerate (battery drain), so it's
 guarded to `USE_EINK`. This is entirely within the module — no Meshtastic source was changed.
+
+### 4.7 T1000-E port (screenless + button gestures + auto-sync)
+
+The Seeed T1000-E (nRF52840) has **no screen** — its Meshtastic build sets
+`MESHTASTIC_EXCLUDE_SCREEN=1` (which forces `HAS_SCREEN=0`), so `screen` is unavailable and the
+whole on-screen UI (status card + sub-menu) must compile out.
+
+**Screenless compilation.** `wantUIFrame()`, `drawFrame()`, and the screen-gated parts of
+`handleInputEvent()` are wrapped in `#if HAS_SCREEN`. On the T1000-E the `#else` branch of
+`handleInputEvent()` is a no-op — gestures are handled separately.
+
+**Button gestures.** `handleMultipress(int clicks)` maps click counts to actions:
+
+| Clicks | Action |
+|---|---|
+| 1 | log a waypoint |
+| 2 | toggle tracking |
+| 3 | clear cache |
+| 4 | GPS toggle (`gps->toggleGpsMode()`) |
+| 5 | node status |
+
+The clicks are delivered by Meshtastic's `ButtonThread` (the OneButton library already separates
+1 / 2 / 3+ clicks via `attachClick` / `attachDoubleClick` / `attachMultiClick`). Three `#ifdef
+TRACKER_T1000_E` hooks in `src/input/ButtonThread.cpp` route each of those cases to
+`cachedPhoneTracker->handleMultipress(n)`. This is the **one required Meshtastic source change**
+(supplied as `patches/ButtonThread.cpp`); the `#else` branches are the unmodified stock code, so
+non-T1000-E targets are unaffected.
+
+**Auto-sync on connect.** A screenless tracker has no "Send cache" menu, so it syncs automatically
+when the phone connects. A 5 s settle delay (`TRACKER_SYNC_SETTLE_MS`) lets the app finish reading
+config/nodes before the cache streams (the handshake-competition fix from §4.4). Sync remains
+non-blocking and paced (one entry per cycle, 1 s apart).
+
+**Buzzer feedback.** The buzzer is the only UI, so each action has a distinct sound via
+`playTones()` (forward-declared — no `buzz.h` edit): an ascending arpeggio for tracking ON, a
+descending one for OFF, a low "dump" for clear-cache, and a single beep on every saved point while
+tracking.
+
+**Default OFF, not persisted.** Tracking starts OFF on every boot. The enabled flag was removed
+from the index file (`_saveIndex`/`_loadIndex`), so `_tracking_enabled` is never restored — it only
+turns on via the 2-click gesture (or the screen builds' menu).
+
+**Flashing.** The T1000-E uses a UF2 drag-and-drop bootloader (Adafruit family `0xADA52840`), *not*
+the nrfutil serial-DFU path — the 1200 bps touch doesn't enter DFU mode on this board. Double-press
+reset → the board mounts as a `T1000-E` FAT drive → copy the `.uf2`. (The LoRaWAN *edition* of the
+T1000-E uses the Seeed bootloader `0x28860057` and needs the UF2 family patched — a separate
+project.)
 
 ---
 
