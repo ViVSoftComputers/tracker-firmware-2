@@ -1,7 +1,33 @@
 # CachedPhoneTracker — Full Project Notes
 
 A complete record of what was done to port and extend the **CachedPhoneTracker** Meshtastic
-module for the **Heltec Wireless Tracker V2**, including the bugs found and the fixes applied.
+module — a GPS tracker with offline caching and phone sync — now supporting **four** hardware
+targets. Includes the bugs found and the fixes applied.
+
+---
+
+## Quick start — build & flash any of the four targets
+
+Current release: **v5.0** (tags `v1.0`–`v5.0`). All four targets are built, flashed and tested.
+
+| Target | Env | Chip / screen | Flash |
+|---|---|---|---|
+| Heltec Wireless Tracker V2 | `heltec-wireless-tracker-v2` | ESP32-S3, TFT (ST7735S) | esptool (§6) |
+| Elecrow ThinkNode M1 | `thinknode_m1` | nRF52840, e-ink | nrfutil (§6.1) |
+| Heltec Mesh Node T096 | `heltec-mesh-node-t096` | nRF52840, TFT (TFT_eSPI) | nrfutil (§6.1) |
+| Seeed T1000-E | `tracker-t1000-e` | nRF52840, screenless | UF2 (§6.2) |
+
+**Build** (from a Meshtastic checkout at commit `200aa42`):
+
+```bash
+cd <meshtastic-checkout>
+env -u PYTHONPATH <python3.12> -m platformio run -e <env>   # env from the table above
+```
+
+This is a **drop-in module**: copy `CachedPhoneTracker.h` + `CachedPhoneTracker.cpp` into
+`src/modules/optional/CachedPhoneTracker/` (auto-discovered by `optional-modules.py`). The
+**T1000-E only** additionally needs `patches/ButtonThread.cpp` to replace
+`src/input/ButtonThread.cpp` (the 1–5 click gesture hooks). See the README for the full steps.
 
 ---
 
@@ -270,12 +296,12 @@ git-bash / MSYS environment on Windows:
    - `~/.platformio\packages\framework-espidf\tools\idf_tools.py`
 4. **`env -u PYTHONPATH`** on every build — the hermes-agent venv leaks onto `sys.path` otherwise.
 
-Build command:
+Build command (replace `<env>` with the target env from the Quick-start table):
 
 ```bash
 cd <meshtastic-checkout>
 env -u PYTHONPATH <native-python-3.12> \
-  -m platformio run -e heltec-wireless-tracker-v2
+  -m platformio run -e <env>
 ```
 
 ## 6. Flashing (direct esptool)
@@ -304,10 +330,33 @@ penv/Scripts/python.exe -m esptool --port COM4 --baud 921600 --chip esp32s3 \
 The board periodically drops off the USB bus after a failed auto-reset. To get it back into
 download mode: **hold BOOT, tap RESET, release BOOT**.
 
+## 6.1 Flashing the nRF52840 boards (ThinkNode M1, Heltec T096)
+
+Both the M1 (`thinknode_m1`) and T096 (`heltec-mesh-node-t096`) use the Adafruit bootloader
+(VID:PID `239A:4405`) and flash cleanly via PlatformIO's nrfutil serial-DFU path (1200 bps touch):
+
+```bash
+cd <meshtastic-checkout>
+env -u PYTHONPATH <native-python-3.12> -m platformio run -e <env> -t upload
+```
+
+They can also be flashed by UF2 drag-and-drop: double-press reset → the board mounts as a FAT
+drive → copy `firmware-<env>-*.uf2`.
+
+## 6.2 Flashing the T1000-E (screenless)
+
+The T1000-E does **not** respond to the 1200 bps touch, so `-t upload` (nrfutil) fails with a
+misleading `[SUCCESS]`. Flash by **UF2 drag-and-drop only** (Adafruit bootloader, family
+`0xADA52840`): double-press reset → the board mounts as `T1000-E` → copy
+`firmware-tracker-t1000-e-*.uf2`.
+
+---
+
 ## 7. Testing notes
 
 - The on-device card is reachable by short-pressing through the Meshtastic frame carousel.
-- To trigger a re-sync of cached points, disconnect then reconnect the phone (BLE reconnect sets
-  `_sync_pending`).
+- **Screen builds (V2 / M1 / T096):** re-sync via the **"Send cache"** menu item — there is no
+  auto-sync on connect (it floods the BLE handshake, §4.4).
+- **T1000-E:** syncs automatically on phone connect (5 s settle delay, §4.7).
 - Timestamps were verified by serial capture of a `LOG_WARN` diagnostic line that dumped
   `localPosition.timestamp`, `localPosition.time`, `getTime()`, and `getRTCQuality()`.
