@@ -33,6 +33,7 @@ The module is **cross-platform** and also builds for two **nRF52840** boards:
 | Target | Env | Notes |
 |---|---|---|
 | Elecrow ThinkNode M1 | `thinknode_m1` | e-ink 200×200 (GxEPD2); filesystem open modes (§4.5), e-ink refresh (§4.6) |
+| Heltec Mesh Node T096 | `heltec-mesh-node-t096` | ST7735 TFT (TFT_eSPI); builds as-is — no module changes needed |
 | Seeed T1000-E | `tracker-t1000-e` | **screenless** — button gestures, auto-sync, buzzer feedback (§4.7) |
 
 ## 3. What changed (two files)
