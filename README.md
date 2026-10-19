@@ -36,6 +36,10 @@ supported:
 - Screen builds show a **status card** (`Tracking: ON/OFF`, `Cache: N/500`) and a single-button
   **sub-menu**. The screenless T1000-E uses **button gestures** and **buzzer tunes** instead.
 
+## Before flashing — back up first
+   - Export and safely store your Meshtastic configuration, including channel settings and keys.
+   - Enter the device's bootloader mode and copy its existing CURRENT.UF2 to a safe location before installing this firmware. Keep it so you can restore the previous firmware if needed.
+
 ## On-device UI
 
 ### Screen builds (Heltec V2, ThinkNode M1, Heltec T096)
