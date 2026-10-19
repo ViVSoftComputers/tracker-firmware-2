@@ -8,9 +8,9 @@ supported:
 
 | Target | Chip / screen | UI |
 |---|---|---|
-| Heltec Wireless Tracker V2 | ESP32-S3, colour TFT | Status card + sub-menu |
+| Heltec Wireless Tracker V2 | ESP32-S3, color TFT | Status card + sub-menu |
 | Elecrow ThinkNode M1 | nRF52840, e-ink | Status card + sub-menu (e-ink refresh handled) |
-| Heltec Mesh Node T096 | nRF52840, colour TFT (TFT_eSPI) | Status card + sub-menu |
+| Heltec Mesh Node T096 | nRF52840, color TFT (TFT_eSPI) | Status card + sub-menu |
 | Seeed T1000-E | nRF52840, **no screen** | Button gestures + buzzer feedback |
 
 > ⚠️ This is **not** a complete firmware. It is a drop-in Meshtastic module — two source files
