@@ -1,3 +1,8 @@
+// Based on Meshtastic's src/input/ButtonThread.cpp (GPL-3.0).
+// Modified by ViVSoft Computers LLC to add TRACKER_T1000_E multi-click gesture
+// hooks routing 1-5 clicks to CachedPhoneTracker::handleMultipress().
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #include "ButtonThread.h"
 #include "meshUtils.h"
 

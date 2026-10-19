@@ -1,5 +1,7 @@
 # CachedPhoneTracker — Meshtastic GPS Tracker Module
 
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
 A Meshtastic **optional module** that turns a compatible GPS-equipped board into a standalone
 GPS tracker with **offline point caching** and **phone sync**. Four hardware targets are
 supported:
