@@ -1,20 +1,21 @@
 # CachedPhoneTracker — Full Project Notes
 
 A complete record of what was done to port and extend the **CachedPhoneTracker** Meshtastic
-module — a GPS tracker with offline caching and phone sync — now supporting **four** hardware
+module — a GPS tracker with offline caching and phone sync — now supporting **five** hardware
 targets. Includes the bugs found and the fixes applied.
 
 ---
 
-## Quick start — build & flash any of the four targets
+## Quick start — build & flash any of the five targets
 
-Current release: **v5.0** (tags `v1.0`–`v5.0`). All four targets are built, flashed and tested.
+Current release: **v6.0** (tags `v1.0`–`v6.0`). All five targets are built, flashed and tested.
 
 | Target | Env | Chip / screen | Flash |
 |---|---|---|---|
 | Heltec Wireless Tracker V2 | `heltec-wireless-tracker-v2` | ESP32-S3, TFT (ST7735S) | esptool (§6) |
 | Elecrow ThinkNode M1 | `thinknode_m1` | nRF52840, e-ink | nrfutil (§6.1) |
 | Heltec Mesh Node T096 | `heltec-mesh-node-t096` | nRF52840, TFT (TFT_eSPI) | nrfutil (§6.1) |
+| Seeed Wio Tracker L1 Pro 1W | `seeed_wio_tracker_L1_Pro_1W` | nRF52840, OLED (trackball) | nrfutil (§6.1) |
 | Seeed T1000-E | `tracker-t1000-e` | nRF52840, screenless | UF2 (§6.2) |
 
 **Build** (from a Meshtastic checkout at commit `200aa42`):
@@ -54,12 +55,13 @@ Turn the Heltec Wireless Tracker V2 (ESP32-S3) into a standalone GPS tracker tha
 | Filesystem | LittleFS |
 | Meshtastic base commit | `200aa42` |
 
-The module is **cross-platform** and also builds for two **nRF52840** boards:
+The module is **cross-platform** and also builds for four **nRF52840** boards:
 
 | Target | Env | Notes |
 |---|---|---|
 | Elecrow ThinkNode M1 | `thinknode_m1` | e-ink 200×200 (GxEPD2); filesystem open modes (§4.5), e-ink refresh (§4.6) |
 | Heltec Mesh Node T096 | `heltec-mesh-node-t096` | ST7735 TFT (TFT_eSPI); builds as-is — no module changes needed |
+| Seeed Wio Tracker L1 Pro 1W | `seeed_wio_tracker_L1_Pro_1W` | OLED + 5-way trackball; trackball menu navigation (§4.8) |
 | Seeed T1000-E | `tracker-t1000-e` | **screenless** — button gestures, auto-sync, buzzer feedback (§4.7) |
 
 ## 3. What changed (two files)
@@ -103,6 +105,9 @@ The original `CachedPhoneTracker` used older Meshtastic APIs. The port updated:
 - **T1000-E support (v4)** — screenless compilation (`#if HAS_SCREEN`), 1–5 click button gestures
   via `handleMultipress()`, auto-sync on phone connect, buzzer feedback tunes, and default-OFF
   tracking (see §4.7).
+- **Seeed Wio Tracker L1 Pro 1W support (v6)** — trackball menu navigation: up/down/left/right
+  cycle the sub-menu and center-press selects, plus `SELECT_LONG` handling for menu-open (see
+  §4.8).
 
 ---
 
@@ -280,6 +285,39 @@ project.)
 
 ---
 
+### 4.8 Seeed Wio Tracker L1 Pro 1W (trackball navigation)
+
+The L1 Pro (nRF52840) adds a fifth screen target: an I2C OLED plus a 5-way **trackball**
+(`HAS_TRACKBALL 1`), alongside a separate "program" button that Meshtastic maps as the cancel
+button.
+
+**Trackball event mapping.** The trackball emits:
+
+| Trackball input | Event |
+|---|---|
+| center-press (tap) | `INPUT_BROKER_SELECT` |
+| center-press (hold) | `INPUT_BROKER_SELECT_LONG` (repeats every ~300 ms) |
+| up / down / left / right | `INPUT_BROKER_UP` / `DOWN` / `LEFT` / `RIGHT` |
+
+The first port only handled `INPUT_BROKER_SELECT` + `INPUT_BROKER_USER_PRESS` (the single-button
+mapping), so the trackball's up/down did nothing, and a held press — which emits the repeating
+`SELECT_LONG`, not `SELECT` — could open but never activate a menu item. Fixed entirely inside the
+module's `handleInputEvent()`:
+
+- **up/down/left/right** now cycle the sub-menu (up/left = previous, down/right = next).
+- **`INPUT_BROKER_SELECT_LONG`** is accepted to *open* the menu (idempotent, so the repeat is
+  harmless); item *activation* still requires a clean tap (`INPUT_BROKER_SELECT`) so a held press
+  can't re-trigger an action.
+
+No Meshtastic source change was needed — the L1 Pro's trackball is already wired through
+`TrackballInterruptImpl1`; the fix lives in the module.
+
+**Flashing.** The L1 Pro uses the Seeed bootloader (`2886:1667` in DFU, `2886:1668` when running)
+and flashes via PlatformIO's nrfutil serial-DFU path exactly like the M1/T096 (§6.1) — no UF2
+family patch needed.
+
+---
+
 ## 5. Build environment (Windows)
 
 All of the following were required to get an ESP32-S3 Meshtastic build working under the
@@ -330,18 +368,20 @@ penv/Scripts/python.exe -m esptool --port COM4 --baud 921600 --chip esp32s3 \
 The board periodically drops off the USB bus after a failed auto-reset. To get it back into
 download mode: **hold BOOT, tap RESET, release BOOT**.
 
-## 6.1 Flashing the nRF52840 boards (ThinkNode M1, Heltec T096)
+## 6.1 Flashing the nRF52840 boards (ThinkNode M1, Heltec T096, Seeed L1 Pro)
 
-Both the M1 (`thinknode_m1`) and T096 (`heltec-mesh-node-t096`) use the Adafruit bootloader
-(VID:PID `239A:4405`) and flash cleanly via PlatformIO's nrfutil serial-DFU path (1200 bps touch):
+The M1 (`thinknode_m1`) and T096 (`heltec-mesh-node-t096`) use the Adafruit bootloader
+(VID:PID `239A:4405`); the Seeed Wio Tracker L1 Pro (`seeed_wio_tracker_L1_Pro_1W`) uses the Seeed
+bootloader (`2886:1667` in DFU, `2886:1668` when running). All three flash cleanly via PlatformIO's
+nrfutil serial-DFU path (1200 bps touch):
 
 ```bash
 cd <meshtastic-checkout>
 env -u PYTHONPATH <native-python-3.12> -m platformio run -e <env> -t upload
 ```
 
-They can also be flashed by UF2 drag-and-drop: double-press reset → the board mounts as a FAT
-drive → copy `firmware-<env>-*.uf2`.
+The M1/T096 can also be flashed by UF2 drag-and-drop: double-press reset → the board mounts as a
+FAT drive → copy `firmware-<env>-*.uf2`.
 
 ## 6.2 Flashing the T1000-E (screenless)
 
@@ -355,8 +395,8 @@ misleading `[SUCCESS]`. Flash by **UF2 drag-and-drop only** (Adafruit bootloader
 ## 7. Testing notes
 
 - The on-device card is reachable by short-pressing through the Meshtastic frame carousel.
-- **Screen builds (V2 / M1 / T096):** re-sync via the **"Send cache"** menu item — there is no
-  auto-sync on connect (it floods the BLE handshake, §4.4).
+- **Screen builds (V2 / M1 / T096 / L1 Pro):** re-sync via the **"Send cache"** menu item — there
+  is no auto-sync on connect (it floods the BLE handshake, §4.4).
 - **T1000-E:** syncs automatically on phone connect (5 s settle delay, §4.7).
 - Timestamps were verified by serial capture of a `LOG_WARN` diagnostic line that dumped
   `localPosition.timestamp`, `localPosition.time`, `getTime()`, and `getRTCQuality()`.

@@ -482,9 +482,15 @@ int CachedPhoneTracker::handleInputEvent(const InputEvent *event)
     if (!screen || !screen->isShowingModuleFrame(this))
         return 0; // Not our frame — let the Screen handle it.
 
+    // A trackball center-press maps to INPUT_BROKER_SELECT for a quick tap and
+    // INPUT_BROKER_SELECT_LONG (repeating) for a hold. Accept both to OPEN the menu
+    // (opening is idempotent, so the long-press repeat is harmless); activating an
+    // item still requires a clean tap (INPUT_BROKER_SELECT) to avoid repeat-triggering.
+    const bool openRequest = event->inputEvent == INPUT_BROKER_SELECT ||
+                             event->inputEvent == INPUT_BROKER_SELECT_LONG;
+
     if (!_menu_active) {
-        // Long press (INPUT_BROKER_SELECT on a single-button device) opens the sub-menu.
-        if (event->inputEvent == INPUT_BROKER_SELECT) {
+        if (openRequest) {
             _menu_active = true;
             _menu_index = 0;
             refreshTrackerDisplay();
@@ -495,19 +501,25 @@ int CachedPhoneTracker::handleInputEvent(const InputEvent *event)
 
     // Sub-menu is active
     switch (event->inputEvent) {
-    case INPUT_BROKER_USER_PRESS:
-        // Short press cycles the selection.
+    case INPUT_BROKER_USER_PRESS: // single-button short press
+    case INPUT_BROKER_DOWN:       // trackball down
+    case INPUT_BROKER_RIGHT:      // trackball right
+        // Next menu item.
         _menu_index = (_menu_index + 1) % 4;
         refreshTrackerDisplay();
         return 1;
+    case INPUT_BROKER_UP: // trackball up
+    case INPUT_BROKER_LEFT: // trackball left
+        // Previous menu item (wrap-around).
+        _menu_index = (_menu_index + 3) % 4;
+        refreshTrackerDisplay();
+        return 1;
     case INPUT_BROKER_SELECT:
-        // Long press activates the highlighted item.
         switch (_menu_index) {
         case 0:
             toggleTracking();
             break;
         case 1:
-            // Send cache: request a manual sync (runs in runOnce when the phone is connected).
             _sync_pending = true;
             break;
         case 2:

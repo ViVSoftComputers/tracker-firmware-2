@@ -3,7 +3,7 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 A Meshtastic **optional module** that turns a compatible GPS-equipped board into a standalone
-GPS tracker with **offline point caching** and **phone sync**. Four hardware targets are
+GPS tracker with **offline point caching** and **phone sync**. Five hardware targets are
 supported:
 
 | Target | Chip / screen | UI |
@@ -11,6 +11,7 @@ supported:
 | Heltec Wireless Tracker V2 | ESP32-S3, color TFT | Status card + sub-menu |
 | Elecrow ThinkNode M1 | nRF52840, e-ink | Status card + sub-menu (e-ink refresh handled) |
 | Heltec Mesh Node T096 | nRF52840, color TFT (TFT_eSPI) | Status card + sub-menu |
+| Seeed Wio Tracker L1 Pro 1W | nRF52840, OLED (5-way trackball) | Status card + sub-menu (trackball nav) |
 | Seeed T1000-E | nRF52840, **no screen** | Button gestures + buzzer feedback |
 
 > ⚠️ This is **not** a complete firmware. It is a drop-in Meshtastic module — two source files
@@ -54,6 +55,18 @@ supported:
 > Single-button boards map **short-press → `INPUT_BROKER_USER_PRESS`** and
 > **long-press → `INPUT_BROKER_SELECT`** (not `SELECT_LONG`). A very long hold still powers the
 > board off — that is the stock Meshtastic `SHUTDOWN` mapping.
+
+### Seeed Wio Tracker L1 Pro 1W (5-way trackball)
+
+| Action | Behaviour |
+|---|---|
+| **Center-press** (tap) | Opens the sub-menu / activates the highlighted item |
+| **Nudge up/down/left/right** | Cycles `Toggle tracking` → `Send cache` → `Clear cache` → `Back` |
+
+> The L1 Pro's trackball maps center-press → `INPUT_BROKER_SELECT`, and up/down/left/right →
+> `INPUT_BROKER_UP/DOWN/LEFT/RIGHT`. The module accepts a trackball long-press
+> (`INPUT_BROKER_SELECT_LONG`) to open the menu too (idempotent), but item activation still uses
+> a clean tap so a held press can't accidentally re-trigger.
 
 ### T1000-E (screenless — button gestures)
 
