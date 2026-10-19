@@ -132,3 +132,10 @@ therefore:
 - sets **both** `pos.time` and `pos.timestamp` when syncing.
 
 See `DOCUMENTATION.md` for the full debugging story.
+
+---
+
+## Links
+
+- [ViVSoft Computers](https://vivsoft.live) — company & projects
+- [LoRa Mesh Devices](https://lorameshdevices.com) — ready-to-use LoRa & Meshtastic hardware
